@@ -4,28 +4,34 @@
 #include "DFRobotDFPlayerMini.h"
 
 // use HardwareSerial UART1TX
-HardwareSerial myHardwareSerial(1); 
+HardwareSerial myHardwareSerial(1);
 DFRobotDFPlayerMini myDFPlayer;
 const int busyPin = 23;
 void printDetail(uint8_t type, int value);
 
-const int button = 2;
+// 送信ボタン
+const int sendButton = 2;
 esp_now_peer_info_t slave;
-static int LED = 13;
+
 volatile esp_err_t result;
-volatile bool flag_button_pushed = false; //  排他用処理中フラグ
-volatile ulong time_button_pushed = 0;    //  操作時刻保存用
-static bool state = false;
+// 排他用処理中フラグ
+volatile bool flag_sendButton_pushed = false;
+// 操作時刻保存用
+volatile ulong time_sendButton_pushed = 0;
+// LED
+static int LED = 13;
+// LED状態保持用
+static bool ledState = false;
 
 // ボタン押下時割り込み処理
 void IRAM_ATTR onPushed() {
   // ボタンが押されていない場合にしか処理しない
-  if (!flag_button_pushed)
+  if (!flag_sendButton_pushed)
   {
     // 押されたフラグを保存
-    flag_button_pushed = true;
+    flag_sendButton_pushed = true;
     // 押された時刻を保存
-    time_button_pushed = millis();
+    time_sendButton_pushed = millis();
   }
 }
 
@@ -54,29 +60,24 @@ void OnDataRecv(const uint8_t *mac_addr, const uint8_t *data, int data_len) {
     Serial.print(msg[1]);
   }
   Serial.println("");
-  state = !state;
-  if (state == true) {
-    Serial.println("LED 点灯");
-     digitalWrite(LED, HIGH);
-     myDFPlayer.play(2);  //Play the first mp3
-  } else {
-    Serial.println("LED 消灯");
-    digitalWrite(LED, LOW);
-  }
-  
+  Serial.println("LED 点灯");
+  digitalWrite(LED, HIGH);
+  delay(100);
+  digitalWrite(LED, LOW);
 }
 
 void setup() {
   Serial.begin(115200);
-  pinMode(LED, OUTPUT);
   // ピン情報設定
-  pinMode(button, INPUT_PULLUP);
-  attachInterrupt(button, onPushed, FALLING);  // 割り込み処理設定
+  pinMode(LED, OUTPUT);
+  pinMode(sendButton, INPUT_PULLUP);
+  // 割り込み処理設定
+  attachInterrupt(sendButton, onPushed, FALLING);
 
   // 押されたフラグを初期化
-  flag_button_pushed = false;
+  flag_sendButton_pushed = false;
   // 押された時刻を初期化
-  time_button_pushed = millis();
+  time_sendButton_pushed = millis();
 
   // ESP-NOW初期化
   WiFi.mode(WIFI_STA);
@@ -99,36 +100,17 @@ void setup() {
     // Pair success
     Serial.println("Pair success");
   }
+  
   // ESP-NOWコールバック登録
   esp_now_register_send_cb(OnDataSent);
   esp_now_register_recv_cb(OnDataRecv);
-
-    myHardwareSerial.begin(9600, SERIAL_8N1, 14, 12); // RX, TX
-  Serial.begin(115200);
-  pinMode(busyPin, INPUT);
-  Serial.println();
-  Serial.println(F("DFRobot DFPlayer Mini Demo"));
-  Serial.println(F("Initializing DFPlayer ... (May take 3~5 seconds)"));
-  
-  if (!myDFPlayer.begin(myHardwareSerial)) {  //Use softwareSerial to communicate with mp3.
-    Serial.println(F("Unable to begin:"));
-    Serial.println(F("1.Please recheck the connection!"));
-    Serial.println(F("2.Please insert the SD card!"));
-    while(true){
-      delay(0); // Code to compatible with ESP8266 watch dog.
-    }
-  }
-  Serial.println(F("DFPlayer Mini online."));
-  
-  myDFPlayer.volume(15);  //Set volume value. From 0 to 30
 }
 
 void loop() {
   // 状態取得
-  if (flag_button_pushed)
+  if (flag_sendButton_pushed)
   {
-    //  LEDをトグルさせる
-    if ((digitalRead(button) == LOW))
+    if ((digitalRead(sendButton) == LOW))
     {
       Serial.println("ボタンが押された");
       uint8_t data[13] = {72, 101, 108, 108, 111, 32, 69, 83, 80, 45, 78, 79, 87};
@@ -150,27 +132,23 @@ void loop() {
         Serial.println("Not sure what happened");
       }
     }
-    else
-    {
-      //
-    }
 
     // 押しっぱなしの時は無限ループで待つ
-    while (digitalRead(button) == LOW)
+    while (digitalRead(sendButton) == LOW)
     {
       delay(10);
     }
     // フラグリセット
-    flag_button_pushed = false;
+    flag_sendButton_pushed = false;
   }
 
   // 一定時間以上経過していたらフラグをリセット
   //  フラグ状態がおかしくなった時用のトラップ
-  if ((millis() - time_button_pushed) > 100000) {
+  if ((millis() - time_sendButton_pushed) > 100000) {
     // フラグリセット
-    flag_button_pushed = false;
+    flag_sendButton_pushed = false;
     // 押された時刻をリセット
-    time_button_pushed = millis();
+    time_sendButton_pushed = millis();
   }
 
   // 1ms間隔
